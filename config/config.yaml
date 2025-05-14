@@ -1,0 +1,89 @@
+# Retinal Vessel Segmentation Configuration (Optimized for F1 > 0.85)
+
+# Experiment settings
+experiment:
+  name: "swin_res_net_drive_enhanced"
+  wandb_project: "drive-vessel-f1-85"
+  log_images: true
+  use_wandb: false
+  use_tta: true  # Enable test-time augmentation
+
+# Data settings
+data:
+  img_size: [512, 512]  # Height, Width
+  use_preprocessed: false  # Changed to false since we don't have preprocessed .npy files
+  use_cross_validation: false
+  current_fold: 0  # Only used if use_cross_validation is true
+
+# Paths
+paths:
+  data_dir: "data/DRIVE"
+  preprocessed_image_dir: "data/DRIVE/training/images"
+  mask_dir: "data/DRIVE/training/1st_manual"
+  fov_dir: "data/DRIVE/training/mask"
+  csv_dir: "data/csv"
+  checkpoint_dir: "checkpoints"
+  output_dir: "outputs"
+
+# Model settings
+model:
+  img_size: [512, 512]  # Height, Width
+  patch_size: 4
+  in_channels: 1  # 1 for green channel, 3 for RGB
+  out_channels: 1
+  deep_supervision: true
+  enable_ca: true  # Enable coordinate attention
+  pretrained: true
+  backbone: "swin_tiny_patch4_window7_224"  # swin transformer backbone
+  edge_detection: true  # Enable edge detection branch
+  label_smoothing: 0.05  # Apply label smoothing for regularization
+
+# Training settings
+training:
+  batch_size: 4
+  num_workers: 4
+  max_epochs: 400
+  early_stopping_patience: 30
+  lr: 2e-4
+  weight_decay: 1e-4
+  cosine_t_max: 40
+  freeze_backbone_epochs: 10
+  use_amp: true
+  seed: 42
+
+# Loss settings
+loss:
+  dice_weight: 0.4
+  tversky_weight: 0.4
+  bce_weight: 0.2
+  tversky_alpha: 0.5
+  tversky_beta: 0.7
+  tversky_gamma: 0.75  # Lower gamma for more focus on hard examples
+
+# Augmentation settings (enhanced for better vessel detection)
+augmentation:
+  rotate_limit: 35
+  elastic_sigma: 50
+  elastic_alpha: 1.5
+  brightness_limit: 0.2
+  contrast_limit: 0.3
+  gamma_limit: [1.0, 1.3]  # Fixed: all values must be >= 1
+  prob: 0.7  # Higher probability of applying augmentations
+
+# Postprocessing settings (optimized for thin vessels)
+postprocessing:
+  min_size: 30  # Reduced to preserve thin vessels
+  apply_morphology: true
+  kernel_size: 3
+  skeletonize: false
+  enhance_vessels: true
+  threshold_sensitivity: 0.45  # Controls threshold sensitivity (lower = more vessels)
+
+# Cross-validation settings
+cross_validation:
+  n_folds: 5
+
+# Test-time augmentation settings
+tta:
+  enabled: true
+  ensemble_method: "weighted_mean"  # Options: mean, weighted_mean, max, voting 

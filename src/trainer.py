@@ -280,6 +280,9 @@ class VesselSegmentationModule(pl.LightningModule):
         
         # Update weights every accumulate_grad_batches
         if (batch_idx + 1) % self.accumulate_grad_batches == 0:
+            # Manual gradient clipping
+            torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+            
             opt.step()
             opt.zero_grad()
             
@@ -545,7 +548,6 @@ def train_model(model,
         precision='16-mixed' if use_amp else '32',
         accumulate_grad_batches=1,  # We handle this manually now
         deterministic=False,  # For better performance
-        gradient_clip_val=1.0,  # Add gradient clipping for stability
         log_every_n_steps=10
     )
     

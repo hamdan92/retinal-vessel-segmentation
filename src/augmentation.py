@@ -159,7 +159,7 @@ def mixup_masks(mask1, mask2, alpha=0.3):
     # Apply mixup
     mixed_mask = alpha * mask1 + (1 - alpha) * mask2
     
-    # Thresholding to get binary mask
+    # Thresholding to get binary mask - preserve original dimensions
     return (mixed_mask > 0.5).astype(np.float32)
 
 
@@ -175,17 +175,28 @@ def apply_cutmix(mask1, mask2, patch_size=64):
     Returns:
         Mixed mask
     """
-    h, w = mask1.shape
+    # Handle multi-dimensional masks (e.g., with channel dimension)
+    if len(mask1.shape) > 2:
+        # If mask has more dimensions, get the spatial dimensions
+        h, w = mask1.shape[-2:]
+        # Create a copy that preserves the original shape
+        mixed_mask = mask1.copy()
+    else:
+        # For 2D masks
+        h, w = mask1.shape
+        mixed_mask = mask1.copy()
     
     # Generate random coordinates for top-left corner of patch
     top = np.random.randint(0, h - patch_size)
     left = np.random.randint(0, w - patch_size)
     
-    # Create mixed mask
-    mixed_mask = mask1.copy()
-    
     # Replace patch in mask1 with patch from mask2
-    mixed_mask[top:top+patch_size, left:left+patch_size] = mask2[top:top+patch_size, left:left+patch_size]
+    if len(mask1.shape) > 2:
+        # For multi-dimensional masks
+        mixed_mask[..., top:top+patch_size, left:left+patch_size] = mask2[..., top:top+patch_size, left:left+patch_size]
+    else:
+        # For 2D masks
+        mixed_mask[top:top+patch_size, left:left+patch_size] = mask2[top:top+patch_size, left:left+patch_size]
     
     return mixed_mask
 
@@ -195,7 +206,7 @@ def apply_mask_augmentation(batch_masks, prob=0.3):
     Apply MixUp or CutMix to a batch of masks
     
     Args:
-        batch_masks: Batch of masks as numpy array [B, H, W]
+        batch_masks: Batch of masks as numpy array [B, C, H, W] or [B, H, W]
         prob: Probability of applying MixUp or CutMix
         
     Returns:
@@ -203,6 +214,9 @@ def apply_mask_augmentation(batch_masks, prob=0.3):
     """
     batch_size = len(batch_masks)
     augmented_masks = batch_masks.copy()
+    
+    # Print mask shape for debugging
+    mask_shape = batch_masks.shape
     
     # Apply MixUp or CutMix with probability prob
     for i in range(batch_size):
@@ -217,7 +231,13 @@ def apply_mask_augmentation(batch_masks, prob=0.3):
                 augmented_masks[i] = mixup_masks(batch_masks[i], batch_masks[j], alpha)
             else:
                 # Apply CutMix
-                patch_size = np.random.randint(32, 128)  # Random patch size
+                # Calculate appropriate patch size based on mask dimensions
+                if len(batch_masks.shape) > 3:  # [B, C, H, W]
+                    h, w = batch_masks.shape[-2:]
+                else:  # [B, H, W]
+                    h, w = batch_masks.shape[-2:]
+                    
+                patch_size = np.random.randint(32, min(h, w) // 2)  # Ensure patch fits within mask
                 augmented_masks[i] = apply_cutmix(batch_masks[i], batch_masks[j], patch_size)
     
     return augmented_masks

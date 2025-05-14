@@ -185,7 +185,7 @@ class VesselSegmentationModule(pl.LightningModule):
         }
     
     def training_step(self, batch, batch_idx):
-        """Training step with MixUp/CutMix augmentation for masks and gradient accumulation"""
+        """Training step with simpler optimization approach"""
         opt = self.optimizers()
         sch = self.lr_schedulers()
         
@@ -193,23 +193,6 @@ class VesselSegmentationModule(pl.LightningModule):
         images = batch['image']
         masks = batch['mask']
         fov_masks = batch['fov'] 
-        
-        # Apply MixUp/CutMix augmentation to masks with 30% probability (during training only)
-        if self.current_epoch > 5 and np.random.random() < 0.3:  # Start after 5 epochs
-            from augmentation import apply_mask_augmentation
-            
-            # Convert masks to numpy for augmentation
-            masks_np = masks.cpu().numpy()
-            
-            # Apply mask augmentation
-            aug_masks_np = apply_mask_augmentation(masks_np, prob=0.3)
-            
-            # Convert back to tensor
-            masks = torch.from_numpy(aug_masks_np).to(masks.device)
-            
-            # Apply FOV mask again if available
-            if fov_masks is not None:
-                masks = masks * fov_masks
         
         # Forward pass
         outputs = self(images)
@@ -237,7 +220,7 @@ class VesselSegmentationModule(pl.LightningModule):
             
             # Combine main loss with auxiliary losses
             if aux_losses:
-                aux_weight = 0.4  # Weight for auxiliary losses
+                aux_weight = 0.3  # Reduced weight for auxiliary losses
                 total_loss = main_loss + aux_weight * sum(aux_losses) / len(aux_losses)
             else:
                 total_loss = main_loss
@@ -249,24 +232,22 @@ class VesselSegmentationModule(pl.LightningModule):
             total_loss = self.loss_fn(outputs, masks)
             preds = torch.sigmoid(outputs)
         
-        # Manual optimization with gradient accumulation
-        # Divide loss by accumulation steps to maintain same gradients
-        total_loss = total_loss / self.accumulate_grad_batches
-        
         # Calculate metrics
-        dice = self.dice_metric(preds, masks.int())
-        precision = self.precision_metric(preds, masks.int())
-        recall = self.recall_metric(preds, masks.int())
+        preds_thresh = (preds > 0.5).float()  # Apply threshold to ensure binary predictions
+        dice = self.dice_metric(preds_thresh, masks.int())
+        precision = self.precision_metric(preds_thresh, masks.int())
+        recall = self.recall_metric(preds_thresh, masks.int())
         
         # Apply FOV mask to predictions for proper vessel evaluation
         if fov_masks is not None:
             preds_fov = preds * fov_masks
             masks_fov = masks * fov_masks
+            preds_fov_thresh = (preds_fov > 0.5).float()  # Also threshold the FOV-masked preds
             
             # Recalculate metrics with FOV masking
-            dice_fov = self.dice_metric(preds_fov, masks_fov.int())
-            precision_fov = self.precision_metric(preds_fov, masks_fov.int())
-            recall_fov = self.recall_metric(preds_fov, masks_fov.int())
+            dice_fov = self.dice_metric(preds_fov_thresh, masks_fov.int())
+            precision_fov = self.precision_metric(preds_fov_thresh, masks_fov.int())
+            recall_fov = self.recall_metric(preds_fov_thresh, masks_fov.int())
             
             # Log metrics with FOV masking
             self.log('train/dice_fov', dice_fov, prog_bar=True)
@@ -274,25 +255,24 @@ class VesselSegmentationModule(pl.LightningModule):
             self.log('train/recall_fov', recall_fov)
         
         # Log metrics
-        self.log('train/loss', total_loss * self.accumulate_grad_batches)  # Log the full loss
+        self.log('train/loss', total_loss)
         self.log('train/dice', dice, prog_bar=True)
         self.log('train/precision', precision)
         self.log('train/recall', recall)
         
-        # Backward pass
+        # Manual optimization
+        opt.zero_grad()
         self.manual_backward(total_loss)
         
-        # Update weights every accumulate_grad_batches
-        if (batch_idx + 1) % self.accumulate_grad_batches == 0:
-            # Manual gradient clipping
-            torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
-            
-            opt.step()
-            opt.zero_grad()
-            
-            # Update learning rate
-            if self.scheduler_type == 'one_cycle':
-                sch.step()
+        # Simple gradient clipping
+        torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+        
+        # Update weights
+        opt.step()
+        
+        # Update learning rate scheduler if step-based
+        if self.scheduler_type == 'one_cycle':
+            sch.step()
         
         return total_loss
     
@@ -315,19 +295,22 @@ class VesselSegmentationModule(pl.LightningModule):
         
         # Get predictions
         preds = torch.sigmoid(outputs)
+        preds_thresh = (preds > 0.5).float()  # Apply threshold for metrics
         
         # Apply FOV mask if available
         if fov_masks is not None:
             preds_fov = preds * fov_masks
+            preds_fov_thresh = (preds_fov > 0.5).float()  # Threshold after FOV masking
             masks_fov = masks * fov_masks
         else:
             preds_fov = preds
+            preds_fov_thresh = preds_thresh
             masks_fov = masks
         
         # Calculate metrics
-        dice = self.dice_metric(preds_fov, masks_fov.int())
-        precision = self.precision_metric(preds_fov, masks_fov.int())
-        recall = self.recall_metric(preds_fov, masks_fov.int())
+        dice = self.dice_metric(preds_fov_thresh, masks_fov.int())
+        precision = self.precision_metric(preds_fov_thresh, masks_fov.int())
+        recall = self.recall_metric(preds_fov_thresh, masks_fov.int())
         auroc = self.auroc_metric(preds_fov.reshape(-1), masks_fov.reshape(-1).int())
         
         # Log metrics

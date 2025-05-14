@@ -46,32 +46,32 @@ training:
   num_workers: 4
   max_epochs: 400
   early_stopping_patience: 30
-  lr: 2e-4
+  lr: 1e-4  # Reduced learning rate for stability
   weight_decay: 1e-4
-  optimizer_type: "lion"  # Options: lion, adamp, adamw
-  scheduler_type: "one_cycle"  # Options: one_cycle, cosine
-  one_cycle_pct_start: 0.3  # Percentage of cycle to increase LR
-  one_cycle_div_factor: 25  # Initial LR divisor
-  one_cycle_max_lr: 6e-4  # Max LR (3x base LR)
-  cosine_t_max: 40  # Only used if scheduler_type is cosine
-  use_lookahead: false  # Disable Lookahead to avoid PyTorch Lightning compatibility issues
-  use_swa: true  # Enable Stochastic Weight Averaging
-  swa_start_epoch: 300  # Epoch to start SWA
-  swa_freq: 5  # Frequency of SWA updates
-  swa_lr: 1e-4  # SWA learning rate
-  accumulate_grad_batches: 4  # Gradient accumulation steps
+  optimizer_type: "adamw"  # Switch back to AdamW for stability
+  scheduler_type: "cosine"  # Use cosine scheduler which is more stable
+  one_cycle_pct_start: 0.3
+  one_cycle_div_factor: 25
+  one_cycle_max_lr: 3e-4  # Reduced max LR
+  cosine_t_max: 40
+  use_lookahead: false
+  use_swa: false  # Disable SWA initially
+  swa_start_epoch: 300
+  swa_freq: 5
+  swa_lr: 1e-4
+  accumulate_grad_batches: 1  # Disable gradient accumulation
   freeze_backbone_epochs: 10
   use_amp: true
   seed: 42
 
 # Loss settings
 loss:
-  dice_weight: 0.3
-  tversky_weight: 0.4
-  topology_weight: 0.3
+  dice_weight: 0.5
+  tversky_weight: 0.3
+  topology_weight: 0.2
   tversky_alpha: 0.3
   tversky_beta: 0.7
-  tversky_gamma: 0.75  # Lower gamma for more focus on hard examples
+  tversky_gamma: 0.75
 
 # Augmentation settings (enhanced for better vessel detection)
 augmentation:

@@ -151,10 +151,10 @@ class ClassBalancedBCELoss(nn.Module):
 class CombinedLoss(nn.Module):
     """
     Enhanced combined loss function as specified in the plan:
-    TotalLoss = 0.3 ⋅ DiceLoss + 0.4 ⋅ FocalTversky + 0.3 ⋅ TopologyAwareLoss
+    TotalLoss = dice_weight ⋅ DiceLoss + tversky_weight ⋅ FocalTversky + topology_weight ⋅ TopologyAwareLoss
     Optimized for thin vessel detection with focus on connectivity
     """
-    def __init__(self, dice_weight=0.3, tversky_weight=0.4, topology_weight=0.3, 
+    def __init__(self, dice_weight=0.5, tversky_weight=0.3, topology_weight=0.2, 
                  tversky_alpha=0.3, tversky_beta=0.7, tversky_gamma=0.75, 
                  smooth=1.0, use_cb_bce=True):
         super(CombinedLoss, self).__init__()
@@ -170,7 +170,7 @@ class CombinedLoss(nn.Module):
             gamma=tversky_gamma, 
             smooth=smooth
         )
-        self.topology = TopologyAwareLoss(kernel_size=5, sigma=1.0, penalty_weight=1.2)
+        self.topology = TopologyAwareLoss(kernel_size=5, sigma=1.0, penalty_weight=1.0)
         
         # Class-balanced BCE for better handling of class imbalance
         if use_cb_bce:
@@ -187,27 +187,35 @@ class CombinedLoss(nn.Module):
         # For Dice and Tversky, apply sigmoid to get probabilities
         probs = torch.sigmoid(pred)
         
+        # Apply each loss component
         dice_loss = self.dice(probs, target)
         tversky_loss = self.tversky(pred, target)  # Will handle sigmoid internally
         topology_loss = self.topology(pred, target)  # Will handle sigmoid internally
         
-        # Calculate BCE loss for auxiliary supervision
+        # Also calculate BCE loss
         bce_loss = self.bce(pred, target)
+        
+        # Add a small regularization that prevents predicting all pixels as 1
+        # This helps avoid the perfect recall / terrible precision problem
+        all_positive_penalty = torch.mean(probs) * 0.01
         
         # Combine losses with weights
         total_loss = (
             self.dice_weight * dice_loss + 
             self.tversky_weight * tversky_loss + 
-            self.topology_weight * topology_loss
+            self.topology_weight * topology_loss +
+            0.1 * bce_loss +  # Small BCE component
+            all_positive_penalty  # Penalty for predicting too many positives
         )
         
-        # Return individual losses for logging
+        # For debugging
         losses = {
             'total': total_loss,
             'dice': dice_loss,
             'tversky': tversky_loss,
             'topology': topology_loss,
-            'bce': bce_loss
+            'bce': bce_loss,
+            'all_positive_penalty': all_positive_penalty
         }
         
         return total_loss 

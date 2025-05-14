@@ -477,10 +477,16 @@ class DynamicThreshold(nn.Module):
     """
     def __init__(self, initial_threshold=0.5, channels=1):
         super(DynamicThreshold, self).__init__()
-        # Initialize with a standard threshold value
+        # Initialize with a standard threshold value - use Parameter for learning
         self.threshold = nn.Parameter(torch.ones(1, channels, 1, 1) * initial_threshold)
+        
+        # Initialize with a=1, b=0 (identity transform)
         self.affine_a = nn.Parameter(torch.ones(1, channels, 1, 1))
         self.affine_b = nn.Parameter(torch.zeros(1, channels, 1, 1))
+        
+        # Add constraints to prevent extreme values
+        self.register_buffer('min_threshold', torch.tensor(0.1))
+        self.register_buffer('max_threshold', torch.tensor(0.9))
         
     def forward(self, x):
         """
@@ -492,6 +498,9 @@ class DynamicThreshold(nn.Module):
         Returns:
             Tensor of same shape with adjusted probabilities
         """
+        # Clamp threshold to reasonable range
+        clamped_threshold = torch.clamp(self.threshold, self.min_threshold, self.max_threshold)
+        
         # Apply affine transformation: ax + b
         x = self.affine_a * x + self.affine_b
         
@@ -502,12 +511,12 @@ class DynamicThreshold(nn.Module):
     
     def get_threshold(self):
         """
-        Get current threshold value
+        Get current threshold value (clamped to valid range)
         
         Returns:
             Current threshold value as a float
         """
-        return self.threshold.item()
+        return torch.clamp(self.threshold, self.min_threshold, self.max_threshold).item()
         
     def binarize(self, x):
         """
@@ -519,7 +528,8 @@ class DynamicThreshold(nn.Module):
         Returns:
             Binary tensor of same shape
         """
-        return (x > self.threshold).float()
+        clamped_threshold = torch.clamp(self.threshold, self.min_threshold, self.max_threshold)
+        return (x > clamped_threshold).float()
 
 
 def get_swin_res_net_plus(

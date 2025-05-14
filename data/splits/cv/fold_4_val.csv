@@ -1,0 +1,5 @@
+id,image_path,mask_path,fov_path,split,fold
+40,data/DRIVE/training/images/40_training.tif,data/DRIVE/training/1st_manual/40_manual1.gif,data/DRIVE/training/mask/40_training_mask.gif,val,4
+36,data/DRIVE/training/images/36_training.tif,data/DRIVE/training/1st_manual/36_manual1.gif,data/DRIVE/training/mask/36_training_mask.gif,val,4
+23,data/DRIVE/training/images/23_training.tif,data/DRIVE/training/1st_manual/23_manual1.gif,data/DRIVE/training/mask/23_training_mask.gif,val,4
+26,data/DRIVE/training/images/26_training.tif,data/DRIVE/training/1st_manual/26_manual1.gif,data/DRIVE/training/mask/26_training_mask.gif,val,4

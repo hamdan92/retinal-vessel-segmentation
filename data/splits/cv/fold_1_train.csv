@@ -1,0 +1,17 @@
+id,image_path,mask_path,fov_path,split,fold
+29,data/DRIVE/training/images/29_training.tif,data/DRIVE/training/1st_manual/29_manual1.gif,data/DRIVE/training/mask/29_training_mask.gif,train,1
+28,data/DRIVE/training/images/28_training.tif,data/DRIVE/training/1st_manual/28_manual1.gif,data/DRIVE/training/mask/28_training_mask.gif,train,1
+22,data/DRIVE/training/images/22_training.tif,data/DRIVE/training/1st_manual/22_manual1.gif,data/DRIVE/training/mask/22_training_mask.gif,train,1
+30,data/DRIVE/training/images/30_training.tif,data/DRIVE/training/1st_manual/30_manual1.gif,data/DRIVE/training/mask/30_training_mask.gif,train,1
+40,data/DRIVE/training/images/40_training.tif,data/DRIVE/training/1st_manual/40_manual1.gif,data/DRIVE/training/mask/40_training_mask.gif,train,1
+36,data/DRIVE/training/images/36_training.tif,data/DRIVE/training/1st_manual/36_manual1.gif,data/DRIVE/training/mask/36_training_mask.gif,train,1
+24,data/DRIVE/training/images/24_training.tif,data/DRIVE/training/1st_manual/24_manual1.gif,data/DRIVE/training/mask/24_training_mask.gif,train,1
+23,data/DRIVE/training/images/23_training.tif,data/DRIVE/training/1st_manual/23_manual1.gif,data/DRIVE/training/mask/23_training_mask.gif,train,1
+34,data/DRIVE/training/images/34_training.tif,data/DRIVE/training/1st_manual/34_manual1.gif,data/DRIVE/training/mask/34_training_mask.gif,train,1
+21,data/DRIVE/training/images/21_training.tif,data/DRIVE/training/1st_manual/21_manual1.gif,data/DRIVE/training/mask/21_training_mask.gif,train,1
+26,data/DRIVE/training/images/26_training.tif,data/DRIVE/training/1st_manual/26_manual1.gif,data/DRIVE/training/mask/26_training_mask.gif,train,1
+27,data/DRIVE/training/images/27_training.tif,data/DRIVE/training/1st_manual/27_manual1.gif,data/DRIVE/training/mask/27_training_mask.gif,train,1
+35,data/DRIVE/training/images/35_training.tif,data/DRIVE/training/1st_manual/35_manual1.gif,data/DRIVE/training/mask/35_training_mask.gif,train,1
+32,data/DRIVE/training/images/32_training.tif,data/DRIVE/training/1st_manual/32_manual1.gif,data/DRIVE/training/mask/32_training_mask.gif,train,1
+38,data/DRIVE/training/images/38_training.tif,data/DRIVE/training/1st_manual/38_manual1.gif,data/DRIVE/training/mask/38_training_mask.gif,train,1
+39,data/DRIVE/training/images/39_training.tif,data/DRIVE/training/1st_manual/39_manual1.gif,data/DRIVE/training/mask/39_training_mask.gif,train,1

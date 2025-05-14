@@ -1,4 +1,4 @@
-from model import SwinResNetPlus, get_swin_res_net_plus
+from model import SwinResNetPlus, get_swin_res_net_plus, DynamicThreshold
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,6 +11,7 @@ class SwinResNetEnhanced(SwinResNetPlus):
     1. Improved boundary detection with edge-aware convolutional blocks
     2. Label smoothing for regularization
     3. Enhanced multi-scale supervision
+    4. Dynamic threshold learning
     """
     def __init__(self, 
                  input_channels=1,
@@ -21,7 +22,8 @@ class SwinResNetEnhanced(SwinResNetPlus):
                  output_size=(512, 512),
                  edge_detection=True,
                  deep_supervision_weights=[0.7, 0.2, 0.1],
-                 label_smoothing=0.05):
+                 label_smoothing=0.05,
+                 use_dynamic_threshold=True):
         # Initialize parent class
         super(SwinResNetEnhanced, self).__init__(
             input_channels=input_channels,
@@ -35,6 +37,7 @@ class SwinResNetEnhanced(SwinResNetPlus):
         self.edge_detection = edge_detection
         self.deep_supervision_weights = deep_supervision_weights
         self.label_smoothing = label_smoothing
+        self.use_dynamic_threshold = use_dynamic_threshold
         
         # Add boundary detection branch if enabled
         if edge_detection:
@@ -44,6 +47,10 @@ class SwinResNetEnhanced(SwinResNetPlus):
                 nn.ReLU(inplace=True),
                 nn.Conv2d(16, 1, kernel_size=1)
             )
+            
+        # Add dynamic threshold layer if enabled
+        if use_dynamic_threshold:
+            self.dynamic_threshold = DynamicThreshold(initial_threshold=0.5, channels=num_classes)
     
     def forward(self, x):
         # Get features from parent class
@@ -74,7 +81,15 @@ class SwinResNetEnhanced(SwinResNetPlus):
             else:
                 return main_output, aux_outputs
         else:
-            return super().forward(x)
+            output = super().forward(x)
+            
+            # Apply dynamic threshold if enabled during inference
+            if self.use_dynamic_threshold and not self.training:
+                # Sigmoid is required here as the output is still logits
+                probs = torch.sigmoid(output)
+                return self.dynamic_threshold(probs)
+            
+            return output
     
     def apply_label_smoothing(self, targets):
         """
@@ -118,7 +133,8 @@ def get_swin_res_net(*args, **kwargs):
             output_size=model.output_size,
             edge_detection=kwargs.get('edge_detection', True),
             deep_supervision_weights=kwargs.get('deep_supervision_weights', [0.7, 0.2, 0.1]),
-            label_smoothing=kwargs.get('label_smoothing', 0.05)
+            label_smoothing=kwargs.get('label_smoothing', 0.05),
+            use_dynamic_threshold=kwargs.get('use_dynamic_threshold', True)
         )
         
         # Copy weights from original model to enhanced model

@@ -468,6 +468,60 @@ class DiceFocalLoss(nn.Module):
         return combined_loss
 
 
+class DynamicThreshold(nn.Module):
+    """
+    Learnable dynamic threshold layer that adapts to the data
+    
+    This layer replaces the fixed 0.5 threshold with a learnable
+    per-batch threshold optimized for F1 score
+    """
+    def __init__(self, initial_threshold=0.5, channels=1):
+        super(DynamicThreshold, self).__init__()
+        # Initialize with a standard threshold value
+        self.threshold = nn.Parameter(torch.ones(1, channels, 1, 1) * initial_threshold)
+        self.affine_a = nn.Parameter(torch.ones(1, channels, 1, 1))
+        self.affine_b = nn.Parameter(torch.zeros(1, channels, 1, 1))
+        
+    def forward(self, x):
+        """
+        Forward pass applies a learned affine transformation and threshold
+        
+        Args:
+            x: Input tensor of shape [B, C, H, W] - should be sigmoid probabilities
+            
+        Returns:
+            Tensor of same shape with adjusted probabilities
+        """
+        # Apply affine transformation: ax + b
+        x = self.affine_a * x + self.affine_b
+        
+        # Clip to [0, 1] range
+        x = torch.clamp(x, 0, 1)
+        
+        return x
+    
+    def get_threshold(self):
+        """
+        Get current threshold value
+        
+        Returns:
+            Current threshold value as a float
+        """
+        return self.threshold.item()
+        
+    def binarize(self, x):
+        """
+        Apply current threshold to binarize the input
+        
+        Args:
+            x: Input tensor of shape [B, C, H, W]
+        
+        Returns:
+            Binary tensor of same shape
+        """
+        return (x > self.threshold).float()
+
+
 def get_swin_res_net_plus(
     input_channels=1,
     num_classes=1,

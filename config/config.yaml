@@ -5,7 +5,7 @@ experiment:
   name: "swin_res_net_drive_enhanced"
   wandb_project: "drive-vessel-f1-85"
   log_images: true
-  use_wandb: false
+  use_wandb: true
   use_tta: true  # Enable test-time augmentation
 
 # Data settings
@@ -37,6 +37,8 @@ model:
   backbone: "swin_tiny_patch4_window7_224"  # swin transformer backbone
   edge_detection: true  # Enable edge detection branch
   label_smoothing: 0.05  # Apply label smoothing for regularization
+  use_dynamic_threshold: true  # Enable learnable dynamic threshold
+  use_fpn: true  # Use Feature Pyramid Network structure
 
 # Training settings
 training:
@@ -46,7 +48,18 @@ training:
   early_stopping_patience: 30
   lr: 2e-4
   weight_decay: 1e-4
-  cosine_t_max: 40
+  optimizer_type: "lion"  # Options: lion, adamp, adamw
+  scheduler_type: "one_cycle"  # Options: one_cycle, cosine
+  one_cycle_pct_start: 0.3  # Percentage of cycle to increase LR
+  one_cycle_div_factor: 25  # Initial LR divisor
+  one_cycle_max_lr: 6e-4  # Max LR (3x base LR)
+  cosine_t_max: 40  # Only used if scheduler_type is cosine
+  use_lookahead: true  # Wrap optimizer with Lookahead
+  use_swa: true  # Enable Stochastic Weight Averaging
+  swa_start_epoch: 300  # Epoch to start SWA
+  swa_freq: 5  # Frequency of SWA updates
+  swa_lr: 1e-4  # SWA learning rate
+  accumulate_grad_batches: 4  # Gradient accumulation steps
   freeze_backbone_epochs: 10
   use_amp: true
   seed: 42
@@ -65,10 +78,14 @@ augmentation:
   rotate_limit: 35
   elastic_sigma: 50
   elastic_alpha: 1.5
-  brightness_limit: 0.2
+  brightness_limit: 0.3
   contrast_limit: 0.3
   gamma_limit: [1.0, 1.3]  # Fixed: all values must be >= 1
   prob: 0.7  # Higher probability of applying augmentations
+  use_clahe: true  # Use CLAHE for contrast enhancement
+  use_grid_distortion: true  # Use grid distortion
+  use_mixup_cutmix: true  # Enable mixup/cutmix for masks
+  mixup_cutmix_prob: 0.3  # Probability of applying mixup/cutmix
 
 # Postprocessing settings (optimized for thin vessels)
 postprocessing:
@@ -78,6 +95,14 @@ postprocessing:
   skeletonize: false
   enhance_vessels: true
   threshold_sensitivity: 0.45  # Controls threshold sensitivity (lower = more vessels)
+  apply_crf: true  # Apply Conditional Random Field refinement
+  crf_params:  # CRF parameters
+    theta_pos: 10
+    theta_rgb: 15
+    theta_bil: 10
+    w1: 5  # Weight of appearance kernel
+    w2: 3  # Weight of smoothness kernel
+    max_iter: 10
 
 # Cross-validation settings
 cross_validation:
@@ -86,7 +111,8 @@ cross_validation:
 # Test-time augmentation settings
 tta:
   enabled: true
-  ensemble_method: "weighted_mean"  # Options: mean, weighted_mean, max, voting 
+  ensemble_method: "weighted_mean"  # Options: mean, weighted_mean, max, voting
+  augmentations: 8  # Number of augmentations (8-way TTA)
 
 # DataLoader settings
 dataloader:

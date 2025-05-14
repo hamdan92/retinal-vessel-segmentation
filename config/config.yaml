@@ -54,7 +54,7 @@ training:
   one_cycle_div_factor: 25  # Initial LR divisor
   one_cycle_max_lr: 6e-4  # Max LR (3x base LR)
   cosine_t_max: 40  # Only used if scheduler_type is cosine
-  use_lookahead: true  # Wrap optimizer with Lookahead
+  use_lookahead: false  # Disable Lookahead to avoid PyTorch Lightning compatibility issues
   use_swa: true  # Enable Stochastic Weight Averaging
   swa_start_epoch: 300  # Epoch to start SWA
   swa_freq: 5  # Frequency of SWA updates

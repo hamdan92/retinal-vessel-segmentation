@@ -141,8 +141,12 @@ class VesselSegmentationModule(pl.LightningModule):
                 weight_decay=self.weight_decay
             )
             
-        # Wrap with Lookahead if requested
-        if self.use_lookahead:
+        # Wrap with Lookahead if requested (only for automatic optimization)
+        # Don't use Lookahead with manual optimization due to compatibility issues
+        if self.use_lookahead and self.automatic_optimization is False:
+            print("Warning: Lookahead is disabled with manual optimization due to compatibility issues")
+            optimizer = base_optimizer
+        elif self.use_lookahead:
             optimizer = Lookahead(base_optimizer, k=5, alpha=0.5)
         else:
             optimizer = base_optimizer
@@ -548,7 +552,7 @@ def train_model(model,
         precision='16-mixed' if use_amp else '32',
         accumulate_grad_batches=1,  # We handle this manually now
         deterministic=False,  # For better performance
-        log_every_n_steps=10
+        log_every_n_steps=1  # Log every step for small datasets
     )
     
     # Train model

@@ -168,6 +168,12 @@ class Lookahead(Optimizer):
         for group in self.param_groups:
             group["counter"] = 0
     
+    def __getattr__(self, name):
+        """
+        Forward attribute lookups to the wrapped optimizer
+        """
+        return getattr(self.optimizer, name)
+    
     def update(self, group):
         """
         Update slow weights

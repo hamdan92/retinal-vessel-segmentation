@@ -47,10 +47,8 @@ lightning_logs/
 outputs/
 checkpoints/
 
-# Dataset files
-DRIVE/
-*.zip
-data/
+# Home directory
+~/
 
 # macOS specific files
 .DS_Store 

@@ -115,10 +115,27 @@ class VesselSegmentationModule(pl.LightningModule):
         }
     
     def training_step(self, batch, batch_idx):
-        """Training step"""
+        """Training step with MixUp/CutMix augmentation for masks"""
         images = batch['image']
         masks = batch['mask']
         fov_masks = batch['fov'] 
+        
+        # Apply MixUp/CutMix augmentation to masks with 30% probability (during training only)
+        if self.current_epoch > 5 and np.random.random() < 0.3:  # Start after 5 epochs
+            from augmentation import apply_mask_augmentation
+            
+            # Convert masks to numpy for augmentation
+            masks_np = masks.cpu().numpy()
+            
+            # Apply mask augmentation
+            aug_masks_np = apply_mask_augmentation(masks_np, prob=0.3)
+            
+            # Convert back to tensor
+            masks = torch.from_numpy(aug_masks_np).to(masks.device)
+            
+            # Apply FOV mask again if available
+            if fov_masks is not None:
+                masks = masks * fov_masks
         
         # Forward pass
         outputs = self(images)

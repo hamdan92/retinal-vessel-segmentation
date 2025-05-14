@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import os
 from PIL import Image
 import random
+import torch
 
 
 def get_training_augmentation(
@@ -60,7 +61,7 @@ def get_training_augmentation(
 
 def get_test_augmentation():
     """
-    Create test time augmentation (TTA) pipeline
+    Create test time augmentation (TTA) pipeline with 8-way augmentations
     
     Returns:
         List of Albumentations Compose objects, each with a different transformation
@@ -78,9 +79,21 @@ def get_test_augmentation():
         A.VerticalFlip(p=1.0),
     ])
     
+    # Horizontal + Vertical flip
+    hv_flip = A.Compose([
+        A.HorizontalFlip(p=1.0),
+        A.VerticalFlip(p=1.0),
+    ])
+    
     # 90 degree rotation
     rot90 = A.Compose([
-        A.RandomRotate90(p=1.0),
+        A.Rotate(limit=(90, 90), p=1.0),
+    ])
+    
+    # 90 degree rotation + horizontal flip
+    rot90h = A.Compose([
+        A.Rotate(limit=(90, 90), p=1.0),
+        A.HorizontalFlip(p=1.0),
     ])
     
     # 180 degree rotation
@@ -88,7 +101,13 @@ def get_test_augmentation():
         A.Rotate(limit=(180, 180), p=1.0),
     ])
     
-    return [default, h_flip, v_flip, rot90, rot180]
+    # 270 degree rotation
+    rot270 = A.Compose([
+        A.Rotate(limit=(270, 270), p=1.0),
+    ])
+    
+    # Return all 8 augmentations for more robust TTA
+    return [default, h_flip, v_flip, hv_flip, rot90, rot90h, rot180, rot270]
 
 
 def apply_augmentation(image, mask, augmentation):
@@ -125,6 +144,85 @@ def apply_augmentation(image, mask, augmentation):
     return aug_image, aug_mask
 
 
+def mixup_masks(mask1, mask2, alpha=0.3):
+    """
+    Apply mixup to two masks with alpha blending
+    
+    Args:
+        mask1: First mask as numpy array
+        mask2: Second mask as numpy array
+        alpha: Alpha blending factor
+        
+    Returns:
+        Mixed mask
+    """
+    # Apply mixup
+    mixed_mask = alpha * mask1 + (1 - alpha) * mask2
+    
+    # Thresholding to get binary mask
+    return (mixed_mask > 0.5).astype(np.float32)
+
+
+def apply_cutmix(mask1, mask2, patch_size=64):
+    """
+    Apply CutMix to two masks by swapping a random patch
+    
+    Args:
+        mask1: First mask as numpy array
+        mask2: Second mask as numpy array
+        patch_size: Size of the patch to swap
+        
+    Returns:
+        Mixed mask
+    """
+    h, w = mask1.shape
+    
+    # Generate random coordinates for top-left corner of patch
+    top = np.random.randint(0, h - patch_size)
+    left = np.random.randint(0, w - patch_size)
+    
+    # Create mixed mask
+    mixed_mask = mask1.copy()
+    
+    # Replace patch in mask1 with patch from mask2
+    mixed_mask[top:top+patch_size, left:left+patch_size] = mask2[top:top+patch_size, left:left+patch_size]
+    
+    return mixed_mask
+
+
+def apply_mask_augmentation(batch_masks, prob=0.3):
+    """
+    Apply MixUp or CutMix to a batch of masks
+    
+    Args:
+        batch_masks: Batch of masks as numpy array [B, H, W]
+        prob: Probability of applying MixUp or CutMix
+        
+    Returns:
+        Augmented masks
+    """
+    batch_size = len(batch_masks)
+    augmented_masks = batch_masks.copy()
+    
+    # Apply MixUp or CutMix with probability prob
+    for i in range(batch_size):
+        if np.random.random() < prob:
+            # Randomly select another mask from the batch
+            j = np.random.choice([k for k in range(batch_size) if k != i])
+            
+            # Randomly choose between MixUp and CutMix
+            if np.random.random() < 0.5:
+                # Apply MixUp
+                alpha = np.random.beta(0.2, 0.2)  # Beta distribution for mixup parameter
+                augmented_masks[i] = mixup_masks(batch_masks[i], batch_masks[j], alpha)
+            else:
+                # Apply CutMix
+                patch_size = np.random.randint(32, 128)  # Random patch size
+                augmented_masks[i] = apply_cutmix(batch_masks[i], batch_masks[j], patch_size)
+    
+    return augmented_masks
+
+
 def visualize_augmentations(image_path, mask_path, num_samples=5, save_dir="data/visualizations"):
     """
     Visualize different augmentations applied to the same image
@@ -153,7 +251,7 @@ def visualize_augmentations(image_path, mask_path, num_samples=5, save_dir="data
         mask = (mask > 0).astype(np.float32)
     
     # Create augmentation
-    augmentation = get_training_augmentation()
+    augmentation = get_train_transforms()
     
     # Generate augmented samples
     augmented_samples = []
@@ -218,7 +316,7 @@ def create_augmented_dataset(
     os.makedirs(os.path.join(output_dir, 'masks'), exist_ok=True)
     
     # Create augmentation pipeline
-    augmentation = get_training_augmentation()
+    augmentation = get_train_transforms()
     
     # Get list of preprocessed images
     image_dir = os.path.join(input_dir, 'images')
@@ -273,14 +371,15 @@ def get_train_transforms(
     rotate_limit=35,
     elastic_sigma=50,
     elastic_alpha=1.5,  # Increased for more dramatic deformations
-    brightness_limit=0.2,
-    contrast_limit=0.3,  # Increased for better vessel contrast
+    brightness_limit=0.3,  # Increased for more variation
+    contrast_limit=0.3,    # Increased for better vessel contrast
     gamma_limit=(1.0, 1.3),  # Fixed: all values must be >= 1
-    prob=0.7  # Increased probability of augmentations
+    prob=0.7,  # Increased probability of augmentations
+    use_clahe=True,
+    use_grid_distortion=True
 ):
     """
-    Create training augmentation pipeline using Albumentations with resizing
-    Optimized for thin vessel detection with stronger augmentations
+    Enhanced training augmentation pipeline optimized for thin vessel detection
     
     Args:
         img_size: Target image size (height, width)
@@ -291,12 +390,14 @@ def get_train_transforms(
         contrast_limit: Maximum contrast adjustment factor
         gamma_limit: Range for gamma adjustment
         prob: Probability of applying augmentations
+        use_clahe: Whether to use CLAHE for contrast enhancement
+        use_grid_distortion: Whether to use grid distortion
         
     Returns:
         Albumentations Compose object with transformations
     """
     # Create augmentation pipeline
-    return A.Compose([
+    transforms_list = [
         # Resize first if needed
         A.Resize(height=img_size[0], width=img_size[1], interpolation=cv2.INTER_LINEAR),
         
@@ -306,9 +407,12 @@ def get_train_transforms(
         A.HorizontalFlip(p=prob),
         A.VerticalFlip(p=prob),
         A.ShiftScaleRotate(shift_limit=0.1, scale_limit=0.15, rotate_limit=rotate_limit, p=prob*0.7),
+        
+        # Enhanced elastic transform for better deformation of vessels
         A.ElasticTransform(
             alpha=elastic_alpha,
             sigma=elastic_sigma,
+            alpha_affine=15,  # Add affine transformations
             p=prob
         ),
         
@@ -329,10 +433,22 @@ def get_train_transforms(
             A.GaussNoise(p=0.3),
             A.MedianBlur(blur_limit=3, p=1.0)
         ], p=0.3),
-        
-        # Random grid distortion
-        A.GridDistortion(num_steps=5, distort_limit=0.3, p=0.2),
-    ])
+    ]
+    
+    # Add grid distortion for more complex deformations
+    if use_grid_distortion:
+        transforms_list.append(
+            A.GridDistortion(num_steps=5, distort_limit=0.3, p=0.3)
+        )
+    
+    # Add additional transformations if requested
+    if use_clahe:
+        transforms_list.append(
+            A.CLAHE(clip_limit=2.0, tile_grid_size=(8, 8), p=0.3)
+        )
+    
+    # Build the final composition
+    return A.Compose(transforms_list)
 
 
 def get_val_transforms(img_size=(512, 512)):
@@ -346,7 +462,122 @@ def get_val_transforms(img_size=(512, 512)):
         Albumentations Compose object
     """
     # No augmentation for validation
-    return A.Compose([])
+    return A.Compose([
+        A.Resize(height=img_size[0], width=img_size[1], interpolation=cv2.INTER_LINEAR)
+    ])
+
+
+def apply_test_time_augmentation(model, image, device):
+    """
+    Apply 8-way test-time augmentation (TTA) using the model
+    
+    Args:
+        model: PyTorch model
+        image: Input image tensor [B, C, H, W]
+        device: Device for computation
+    
+    Returns:
+        Average of predictions from all augmentations
+    """
+    # Get augmentations
+    transforms = get_test_augmentation()
+    batch_size, channels, height, width = image.size()
+    
+    # Ensure model is in eval mode
+    model.eval()
+    
+    # Store predictions
+    preds = []
+    
+    # Original prediction
+    with torch.no_grad():
+        output = model(image)
+        if isinstance(output, list):
+            output = output[0]  # Use the main output for deep supervision models
+        preds.append(torch.sigmoid(output))
+    
+    # Apply each augmentation
+    for transform in transforms[1:]:  # Skip the first one (identity)
+        aug_images = []
+        
+        # Apply augmentation to each image in batch
+        for i in range(batch_size):
+            img = image[i].cpu().permute(1, 2, 0).numpy()  # [H, W, C]
+            
+            # Apply augmentation (transforms expect [H, W, C])
+            augmented = transform(image=img)['image']
+            
+            # Convert back to tensor
+            aug_img = torch.from_numpy(augmented).permute(2, 0, 1).to(device)
+            aug_images.append(aug_img)
+        
+        # Stack augmented images
+        aug_batch = torch.stack(aug_images)
+        
+        # Get prediction
+        with torch.no_grad():
+            aug_output = model(aug_batch)
+            if isinstance(aug_output, list):
+                aug_output = aug_output[0]
+            
+            # Apply inverse augmentation to prediction
+            aug_pred = torch.sigmoid(aug_output)
+            inv_aug_pred = inverse_augmentation(aug_pred, transform, batch_size, height, width, device)
+            
+            preds.append(inv_aug_pred)
+    
+    # Average predictions
+    ensemble_pred = torch.stack(preds).mean(dim=0)
+    
+    return ensemble_pred.cpu().numpy()
+
+
+def inverse_augmentation(pred, transform, batch_size, height, width, device):
+    """
+    Apply inverse augmentation to prediction
+    
+    Args:
+        pred: Prediction tensor [B, C, H, W]
+        transform: Augmentation transform
+        batch_size: Batch size
+        height, width: Original image dimensions
+        device: Device for computation
+    
+    Returns:
+        Inversely augmented prediction
+    """
+    inv_preds = []
+    
+    # Apply inverse augmentation to each prediction in batch
+    for i in range(batch_size):
+        p = pred[i].cpu().permute(1, 2, 0).numpy()  # [H, W, C]
+        
+        # Apply inverse augmentation based on transform type
+        if isinstance(transform, A.Compose):
+            transforms = transform.transforms
+            
+            for t in reversed(transforms):
+                if isinstance(t, A.HorizontalFlip):
+                    p = np.flip(p, axis=1)
+                elif isinstance(t, A.VerticalFlip):
+                    p = np.flip(p, axis=0)
+                elif isinstance(t, A.Rotate) or isinstance(t, A.RandomRotate90):
+                    if hasattr(t, 'limit') and t.limit[0] == 90 and t.limit[1] == 90:
+                        p = np.rot90(p, k=3)  # Rotate 270 degrees (inverse of 90)
+                    elif hasattr(t, 'limit') and t.limit[0] == 180 and t.limit[1] == 180:
+                        p = np.rot90(p, k=2)  # Rotate 180 degrees (inverse of 180)
+                    elif hasattr(t, 'limit') and t.limit[0] == 270 and t.limit[1] == 270:
+                        p = np.rot90(p, k=1)  # Rotate 90 degrees (inverse of 270)
+                    else:
+                        # For random rotations, just resize to original size
+                        p = cv2.resize(p, (width, height))
+        
+        # Convert back to tensor
+        inv_pred = torch.from_numpy(p).permute(2, 0, 1).to(device)
+        inv_preds.append(inv_pred)
+    
+    # Stack inversely augmented predictions
+    return torch.stack(inv_preds)
 
 
 if __name__ == "__main__":

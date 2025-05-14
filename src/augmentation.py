@@ -326,7 +326,7 @@ def get_train_transforms(
         # Blur/Noise augmentations
         A.OneOf([
             A.GaussianBlur(blur_limit=3, p=1.0),
-            A.GaussNoise(noise_variance=(5.0, 30.0), p=1.0),
+            A.GaussNoise(p=0.3),
             A.MedianBlur(blur_limit=3, p=1.0)
         ], p=0.3),
         

@@ -385,7 +385,7 @@ def train_model(model,
         logger=logger,
         callbacks=callbacks,
         precision='16-mixed' if use_amp else '32',
-        deterministic=True
+        deterministic=False
     )
     
     # Train model

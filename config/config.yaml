@@ -87,3 +87,9 @@ cross_validation:
 tta:
   enabled: true
   ensemble_method: "weighted_mean"  # Options: mean, weighted_mean, max, voting 
+
+# DataLoader settings
+dataloader:
+  batch_size: 4
+  num_workers: 2
+  prefetch_factor: 2 

@@ -53,10 +53,10 @@ training:
 
 # Loss settings
 loss:
-  dice_weight: 0.4
+  dice_weight: 0.3
   tversky_weight: 0.4
-  bce_weight: 0.2
-  tversky_alpha: 0.5
+  topology_weight: 0.3
+  tversky_alpha: 0.3
   tversky_beta: 0.7
   tversky_gamma: 0.75  # Lower gamma for more focus on hard examples
 

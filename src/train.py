@@ -145,6 +145,15 @@ def main(cfg: DictConfig):
     if cfg.data.use_cross_validation:
         wandb_project = f"{wandb_project}_fold{current_fold}"
     
+    # Training parameters from config
+    loss_params = {
+        'dice_weight': cfg.loss.dice_weight,
+        'tversky_weight': cfg.loss.tversky_weight,
+        'topology_weight': cfg.loss.topology_weight,
+        'tversky_alpha': cfg.loss.tversky_alpha,
+        'tversky_beta': cfg.loss.tversky_beta
+    }
+    
     # Train model
     model_module = train_model(
         model=model,
@@ -152,11 +161,6 @@ def main(cfg: DictConfig):
         val_dataloader=val_dataloader,
         lr=cfg.training.lr,
         weight_decay=cfg.training.weight_decay,
-        dice_weight=cfg.loss.dice_weight,
-        tversky_weight=cfg.loss.tversky_weight,
-        bce_weight=cfg.loss.bce_weight,
-        tversky_alpha=cfg.loss.tversky_alpha,
-        tversky_beta=cfg.loss.tversky_beta,
         cosine_t_max=cfg.training.cosine_t_max,
         freeze_backbone_epochs=cfg.training.freeze_backbone_epochs,
         max_epochs=cfg.training.max_epochs,
@@ -166,7 +170,8 @@ def main(cfg: DictConfig):
         wandb_project=wandb_project,
         use_wandb=cfg.experiment.get('use_wandb', True),
         use_amp=cfg.training.use_amp,
-        seed=cfg.training.seed
+        seed=cfg.training.seed,
+        loss_params=loss_params
     )
     
     print(f"Training completed. Model checkpoints saved to {cfg.paths.checkpoint_dir}")

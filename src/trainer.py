@@ -19,10 +19,10 @@ class VesselSegmentationModule(pl.LightningModule):
                  model,
                  lr=2e-4,
                  weight_decay=1e-4,
-                 dice_weight=0.4,
+                 dice_weight=0.3,
                  tversky_weight=0.4,
-                 bce_weight=0.2,
-                 tversky_alpha=0.5,
+                 topology_weight=0.3,
+                 tversky_alpha=0.3,
                  tversky_beta=0.7,
                  cosine_t_max=40,
                  freeze_backbone_epochs=10,
@@ -34,7 +34,7 @@ class VesselSegmentationModule(pl.LightningModule):
             weight_decay: Weight decay for optimizer
             dice_weight: Weight for Dice loss component
             tversky_weight: Weight for Tversky loss component
-            bce_weight: Weight for BCE loss component
+            topology_weight: Weight for topology-aware loss component
             tversky_alpha: Alpha parameter for Tversky loss
             tversky_beta: Beta parameter for Tversky loss
             cosine_t_max: Number of epochs for cosine annealing cycle
@@ -53,7 +53,7 @@ class VesselSegmentationModule(pl.LightningModule):
         self.loss_fn = CombinedLoss(
             dice_weight=dice_weight,
             tversky_weight=tversky_weight,
-            bce_weight=bce_weight,
+            topology_weight=topology_weight,
             tversky_alpha=tversky_alpha,
             tversky_beta=tversky_beta
         )
@@ -289,11 +289,6 @@ def train_model(model,
                 test_dataloader=None,
                 lr=2e-4,
                 weight_decay=1e-4,
-                dice_weight=0.4,
-                tversky_weight=0.4,
-                bce_weight=0.2,
-                tversky_alpha=0.5,
-                tversky_beta=0.7,
                 cosine_t_max=40,
                 freeze_backbone_epochs=10,
                 max_epochs=400,
@@ -303,7 +298,8 @@ def train_model(model,
                 wandb_project="drive-vessel",
                 use_wandb=True,
                 use_amp=True,
-                seed=42):
+                seed=42,
+                loss_params=None):
     """
     Train a vessel segmentation model
     
@@ -314,11 +310,6 @@ def train_model(model,
         test_dataloader: Test dataloader (optional)
         lr: Learning rate
         weight_decay: Weight decay for AdamW
-        dice_weight: Weight for Dice loss component
-        tversky_weight: Weight for Tversky loss component
-        bce_weight: Weight for BCE loss component
-        tversky_alpha: Alpha parameter for Tversky loss
-        tversky_beta: Beta parameter for Tversky loss
         cosine_t_max: Number of epochs for cosine annealing cycle
         freeze_backbone_epochs: Number of epochs to keep backbone frozen
         max_epochs: Maximum number of epochs
@@ -329,6 +320,7 @@ def train_model(model,
         use_wandb: Whether to use wandb for logging
         use_amp: Whether to use automatic mixed precision
         seed: Random seed for reproducibility
+        loss_params: Dictionary with loss function parameters
     
     Returns:
         Trained Lightning module
@@ -336,16 +328,29 @@ def train_model(model,
     # Set seed for reproducibility
     pl.seed_everything(seed)
     
+    # Default loss parameters
+    default_loss_params = {
+        'dice_weight': 0.3,
+        'tversky_weight': 0.4,
+        'topology_weight': 0.3,
+        'tversky_alpha': 0.3,
+        'tversky_beta': 0.7
+    }
+    
+    # Use provided loss parameters or defaults
+    if loss_params is None:
+        loss_params = default_loss_params
+    
     # Create lightning module
     model_module = VesselSegmentationModule(
         model=model,
         lr=lr,
         weight_decay=weight_decay,
-        dice_weight=dice_weight,
-        tversky_weight=tversky_weight,
-        bce_weight=bce_weight,
-        tversky_alpha=tversky_alpha,
-        tversky_beta=tversky_beta,
+        dice_weight=loss_params.get('dice_weight', default_loss_params['dice_weight']),
+        tversky_weight=loss_params.get('tversky_weight', default_loss_params['tversky_weight']),
+        topology_weight=loss_params.get('topology_weight', default_loss_params['topology_weight']),
+        tversky_alpha=loss_params.get('tversky_alpha', default_loss_params['tversky_alpha']),
+        tversky_beta=loss_params.get('tversky_beta', default_loss_params['tversky_beta']),
         cosine_t_max=cosine_t_max,
         freeze_backbone_epochs=freeze_backbone_epochs,
         log_images=log_images
